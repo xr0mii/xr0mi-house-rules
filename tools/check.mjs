@@ -26,3 +26,5 @@ for (const directory of ['scripts', 'tools', 'tests']) {
   }
 }
 console.log('Manifest, version, public assets and JavaScript syntax verified.');
+
+assert(readFileSync(new URL(".gitattributes", root), "utf8").split(/\r?\n/).includes("dist/ export-ignore"), "Source archive must exclude the generated dist directory");

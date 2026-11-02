@@ -1,10 +1,12 @@
 {
   "name": "xr0mi-house-rules",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "private": true,
   "type": "module",
   "description": "Foundry VTT house rules for Pathfinder 2e",
-  "engines": {"node": ">=22"},
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "check": "node tools/check.mjs",
     "test": "node tools/test.mjs",
