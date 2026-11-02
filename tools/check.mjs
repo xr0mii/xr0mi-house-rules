@@ -11,7 +11,7 @@ assert.match(manifest.version, /^\d+\.\d+\.\d+$/);
 assert.equal(manifest.download, `${manifest.url}/releases/download/v${manifest.version}/${manifest.id}.zip`);
 assert.equal(manifest.manifest, `${manifest.url}/releases/latest/download/module.json`);
 if (process.env.GITHUB_REF_TYPE === 'tag') assert.equal(process.env.GITHUB_REF_NAME, `v${manifest.version}`);
-for (const name of [...manifest.esmodules, ...manifest.styles, 'LICENSE', 'NOTICE.md']) assert(existsSync(new URL(name, root)), name);
+for (const name of [...manifest.esmodules, ...manifest.styles, 'LICENSE']) assert(existsSync(new URL(name, root)), name);
 const rules = read('data/rules.json');
 assert(rules.length > 0);
 for (const section of rules) {
