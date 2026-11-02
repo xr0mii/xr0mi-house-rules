@@ -4,7 +4,6 @@
   "private": true,
   "type": "module",
   "description": "Foundry VTT house rules for Pathfinder 2e",
-  "license": "MIT",
   "engines": {"node": ">=22"},
   "scripts": {
     "check": "node tools/check.mjs",

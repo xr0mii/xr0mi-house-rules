@@ -11,7 +11,7 @@ if os.environ.get('GITHUB_REF_TYPE') == 'tag':
     assert os.environ['GITHUB_REF_NAME'] == 'v' + manifest['version'], 'Tag and version differ'
 dist = ROOT / 'dist'
 dist.mkdir(exist_ok=True)
-files = [ROOT / name for name in ['module.json', 'README.md', 'LICENSE']]
+files = [ROOT / name for name in ['module.json', 'README.md']]
 for directory in ['scripts', 'styles', 'data']:
     files.extend(p for p in (ROOT / directory).rglob('*') if p.is_file())
 archive = dist / (manifest['id'] + '.zip')
