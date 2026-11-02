@@ -1,0 +1,32 @@
+import assert from 'node:assert/strict';
+import {requestVillain, resolveVillain, adjustVillain, villainPoints} from '../scripts/villain-points.mjs';
+let pool=0, created=[];
+const player={id:'p',isGM:false}, gm={id:'gm',isGM:true};
+const actor={id:'a',name:'Нариэль',type:'character',isOwner:true,system:{resources:{heroPoints:{value:1,max:3}}},testUserPermission:user=>user.id==='p',async update(u){this.system.resources.heroPoints.value=u['system.resources.heroPoints.value'];}};
+globalThis.game={user:player,settings:{get:()=>pool,set:async(_id,_key,value)=>{pool=value;}},actors:{get:id=>id==='a'?actor:null},users:{activeGM:gm,get:id=>id==='p'?player:gm}};
+globalThis.ChatMessage={getSpeaker:()=>({}),create:async data=>{created.push(data);return data;}};
+globalThis.ui={notifications:{info:()=>{},warn:()=>{}}};
+function message(data){let request=data.flags['xr0mi-house-rules'].villainRequest;return {author:player,getFlag:()=>request,setFlag:async(_id,_key,value)=>{request=value;}};}
+await requestVillain(actor,'gift');assert.equal(pool,0);assert.equal(actor.system.resources.heroPoints.value,1);
+let gift=message(created.at(-1));
+await assert.rejects(()=>resolveVillain(gift,true)); // Players cannot process their own request.
+game.user=gm;await resolveVillain(gift,true);assert.equal(pool,1);assert.equal(actor.system.resources.heroPoints.value,1);
+await resolveVillain(gift,true);assert.equal(pool,1);
+game.user=player;await requestVillain(actor,'trade');let trade=message(created.at(-1));
+game.user=gm;await resolveVillain(trade,true);assert.equal(pool,2);assert.equal(actor.system.resources.heroPoints.value,2);
+game.user=player;await requestVillain(actor,'trade');let declined=message(created.at(-1));
+game.user=gm;await resolveVillain(declined,false);assert.equal(pool,2);assert.equal(actor.system.resources.heroPoints.value,2);
+await adjustVillain('add');assert.equal(pool,3);
+game.user=player;await assert.rejects(()=>requestVillain(actor,'gift'));
+game.user=gm;await adjustVillain('spend');assert.equal(pool,2);
+actor.system.resources.heroPoints.value=3;game.user=player;await assert.rejects(()=>requestVillain(actor,'trade'));
+actor.system.resources.heroPoints.value=2;await requestVillain(actor,'trade');trade=message(created.at(-1));
+actor.update=async()=>{throw Error('Expected actor update failure');};game.user=gm;
+await assert.rejects(()=>resolveVillain(trade,true));assert.equal(pool,2);assert.equal(trade.getFlag().status,'error');
+await adjustVillain('spend');await adjustVillain('spend');assert.equal(pool,0);
+await assert.rejects(()=>adjustVillain('spend'));await adjustVillain('session');assert.equal(pool,1);
+await adjustVillain('session');assert.equal(pool,1);
+game.user=player;await requestVillain(actor,'gift');let forged=message(created.at(-1));forged.author=gm;game.user=gm;
+await assert.rejects(()=>resolveVillain(forged,true));assert.equal(pool,1);
+assert.equal(villainPoints(),1);
+console.log('PASS: gift, agreed trade, decline, player permissions, request ownership, limits, repeated acceptance, rollback, spending, session top-up only at zero.');

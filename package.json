@@ -1,0 +1,14 @@
+{
+  "name": "xr0mi-house-rules",
+  "version": "0.4.1",
+  "private": true,
+  "type": "module",
+  "description": "Foundry VTT house rules for Pathfinder 2e",
+  "license": "MIT",
+  "engines": {"node": ">=22"},
+  "scripts": {
+    "check": "node tools/check.mjs",
+    "test": "node tools/test.mjs",
+    "build": "python tools/build.py"
+  }
+}
