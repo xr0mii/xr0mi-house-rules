@@ -8,7 +8,12 @@ const jobs = new Map();
 let sections = [];
 const points = actor => Number(actor.system.resources.heroPoints.value);
 const cap = actor => Number(actor.system.resources.heroPoints.max ?? 3);
-const owned = () => game.actors.filter(a => a.type === 'character' && a.isOwner);
+export const partyCharacters = () => (game.actors.party?.members ?? []).filter(a => a.type === 'character' && game.actors.get(a.id) === a);
+const owned = () => partyCharacters().filter(a => a.isOwner);
+function validatePartyTransfer(source, target) {
+  const members = partyCharacters();
+  if (!members.includes(source) || !members.includes(target)) throw Error('Передавать Очки Героя можно только между персонажами активной группы PF2e.');
+}
 async function serial(key, fn) {
   if (jobs.has(key)) return ui.notifications.warn('Предыдущая операция ещё выполняется.');
   jobs.set(key, true);
@@ -19,6 +24,7 @@ export {requestTransfer, resolveTransfer};
 async function requestTransfer(actor, target, description = '') {
   if (!actor?.isOwner || actor.type !== 'character') throw Error('Выберите своего персонажа.');
   validateTransfer(actor.id, target?.id, points(actor), target ? points(target) : 0, target ? cap(target) : 3);
+  validatePartyTransfer(actor, target);
   await ChatMessage.create({speaker: ChatMessage.getSpeaker({actor}),
     content: `<div class="xr0mi-card"><h3>Передача Очка Героя</h3><p>${e(actor.name)} → ${e(target.name)}</p>${description ? `<p>${e(description)}</p>` : ''}<p>Передача не применяется для Геройского восстановления.</p></div>`,
     flags: {[ID]: {transfer: {from: actor.id, to: target.id, user: game.user.id, status: 'pending'}}}});
@@ -36,6 +42,7 @@ async function resolveTransfer(message, accept) {
     if (!source || !target || !user || source.type !== 'character' || target.type !== 'character') throw Error('Персонаж или автор запроса больше не существует.');
     if (message.author.id !== user.id || !source.testUserPermission(user, 'OWNER')) throw Error('У автора нет прав на персонажа-отправителя.');
     validateTransfer(source.id, target.id, points(source), points(target), cap(target));
+    validatePartyTransfer(source, target);
     const sourceBefore = points(source), targetBefore = points(target);
     await updateStatus('processing');
     try {
@@ -54,12 +61,12 @@ export class HouseRules extends foundry.applications.api.ApplicationV2 {
   static DEFAULT_OPTIONS = {id: ID, classes: ['xr0mi-window'], window: {title: 'Домашние правила · xr0mi', resizable: true}, position: {width: 780, height: 790}};
   async _renderHTML() {
     const root = document.createElement('div'); root.className = 'xr0mi-panel';
-    const characters = owned();
     root.innerHTML = `<header class="xr0mi-banner"><span>ПРАВИЛА ВАШЕГО СТОЛА</span><h1>Истории, достойные героев</h1><p>Очки Героя, помощь союзникам и правила под рукой.</p></header>
       <nav class="xr0mi-tabs" aria-label="Разделы"><button type="button" data-tab="hero" aria-pressed="true">Очки и памятки</button><button type="button" data-tab="rules" aria-pressed="false">Свод правил</button></nav>
       <section data-pane="hero"><div class="xr0mi-box"><div class="xr0mi-heading"><h2>Передать Очко Героя</h2><span data-count class="xr0mi-count"></span></div>
-      <label>Персонаж<select name="actor">${characters.map(a => `<option value="${a.id}">${e(a.name)}</option>`).join('')}</select></label>
+      <label>Ваш персонаж в группе<select name="actor"></select></label>
       <label>Кому передать?<select name="target"></select></label>
+      <p class="xr0mi-hint" data-party-hint></p>
       <p class="xr0mi-hint">Ведущий подтвердит передачу в чате. Для Геройского восстановления передавать очки нельзя.</p><button type="button" data-submit class="xr0mi-primary">Запросить передачу у ведущего</button><p data-feedback role="status" aria-live="polite"></p></div>
       <div data-villain-slot></div><div class="xr0mi-box"><h2>Отправить памятку в чат</h2><div class="xr0mi-buttons"><button type="button" data-card="rise">Помочь подняться <small>1 действие</small></button><button type="button" data-card="persistent">Продолжительный урон <small>2 действия</small></button><button type="button" data-card="aid">Помощь <small>КС и результаты</small></button></div></div></section>
       <section data-pane="rules" hidden><label class="xr0mi-search">Найти правило<input type="search" name="search" placeholder="Лечение, знания, пребаффы…"></label><p class="xr0mi-muted" data-rule-count>${sections.length} разделов · нажмите на название, чтобы раскрыть</p><div data-rules>${sections.map(s => `<details><summary>${e(s.title)}</summary><div class="xr0mi-rule-body">${s.image ? `<img class="xr0mi-ritual-image" src="modules/${ID}/${e(s.image)}" alt="Памятка домашних правил ритуалов" loading="lazy">` : ''}${s.lines.map(line => `<p>${e(line)}</p>`).join('')}</div></details>`).join('')}</div><p data-empty hidden>По вашему запросу ничего не найдено.</p></section>
@@ -69,10 +76,18 @@ export class HouseRules extends foundry.applications.api.ApplicationV2 {
       for (const pane of root.querySelectorAll('[data-pane]')) pane.hidden = pane.dataset.pane !== tab.dataset.tab;
     });
     const refresh = () => {
-      const actor = game.actors.get(root.querySelector('[name=actor]').value);
+      const actorSelect = root.querySelector('[name=actor]');
+      const previousActor = actorSelect.value;
+      const characters = owned();
+      actorSelect.innerHTML = characters.map(a => `<option value="${a.id}" ${a.id === previousActor ? 'selected' : ''}>${e(a.name)}</option>`).join('') || '<option value="">Нет своего персонажа в группе</option>';
+      actorSelect.disabled = characters.length === 0;
+      const actor = game.actors.get(actorSelect.value);
       const targetSelect = root.querySelector('[name=target]');
       const previous = targetSelect.value;
-      targetSelect.innerHTML = game.actors.filter(a => a.type === 'character' && a.id !== actor?.id).map(a => `<option value="${a.id}" ${a.id === previous ? 'selected' : ''}>${e(a.name)} · ${points(a)}/${cap(a)}</option>`).join('');
+      const targets = partyCharacters().filter(a => a.id !== actor?.id);
+      targetSelect.innerHTML = targets.map(a => `<option value="${a.id}" ${a.id === previous ? 'selected' : ''}>${e(a.name)} · ${points(a)}/${cap(a)}</option>`).join('') || '<option value="">Нет других персонажей в группе</option>';
+      targetSelect.disabled = !actor || targets.length === 0;
+      root.querySelector('[data-party-hint]').textContent = !game.actors.party ? 'Создайте группу PF2e и добавьте в неё героев.' : !characters.length ? 'Добавьте своего персонажа в активную группу PF2e.' : `Группа: ${game.actors.party.name}. В списке только её участники.`;
       root.querySelector('[data-count]').textContent = actor ? `${points(actor)} / ${cap(actor)}` : 'Нет персонажа';
       const target = game.actors.get(targetSelect.value);
       root.querySelector('[data-submit]').disabled = !actor || points(actor) < 1 || !target || points(target) >= cap(target);
@@ -103,11 +118,15 @@ export class HouseRules extends foundry.applications.api.ApplicationV2 {
   }
   _replaceHTML(result, content) { content.replaceChildren(result); }
   _onFirstRender() {
-    this.actorHook = Hooks.on('updateActor', () => this.refreshPoints?.());
+    this.actorHooks = ['updateActor', 'createActor', 'deleteActor'].map(event => [event, Hooks.on(event, () => this.refreshPoints?.())]);
+    this.settingHook = Hooks.on('updateSetting', setting => {
+      if (setting.key === 'pf2e.activeParty') this.refreshPoints?.();
+    });
     this.villainHook = Hooks.on('xr0miVillainPointsChanged', () => this.refreshVillain?.());
   }
   _onClose() {
-    if (this.actorHook !== undefined) Hooks.off('updateActor', this.actorHook);
+    for (const [event, id] of this.actorHooks ?? []) Hooks.off(event, id);
+    if (this.settingHook !== undefined) Hooks.off('updateSetting', this.settingHook);
     if (this.villainHook !== undefined) Hooks.off('xr0miVillainPointsChanged', this.villainHook);
   }
 }
